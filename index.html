@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>新竹縣政府消防局管制藥品損毀/遺失事故報告單</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+
+  <!-- ==================== 頂部工具列 (列印時自動隱藏) ==================== -->
+  <header class="top-navbar no-print">
+    <div class="navbar-inner">
+      <div class="brand-group">
+        <div class="brand-icon">藥</div>
+        <div class="brand-title">
+          <h1>新竹縣政府消防局｜管制藥品事故報告單電子系統</h1>
+          <div class="brand-meta">
+            <span class="status-pill" id="cloudStatusPill">
+              <span class="status-dot offline" id="cloudStatusDot"></span>
+              <span id="cloudStatusText">雲端傳簽服務連線中...</span>
+            </span>
+            <span id="autoSaveTimestamp">草稿自動儲存就緒</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar-actions">
+        <button type="button" class="btn btn-glass" id="btnOpenHistory" title="查看已儲存或雲端傳簽紀錄">
+          📂 歷史／傳簽紀錄
+        </button>
+        <button type="button" class="btn btn-glass" id="btnExportJson" title="匯出 JSON 備份檔">
+          ⬇️ 匯出草稿
+        </button>
+        <button type="button" class="btn btn-glass" id="btnImportJson" title="匯入 JSON 備份檔">
+          ⬆️ 匯入草稿
+        </button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
+        <button type="button" class="btn btn-glass" id="btnOpenCloudConfig" title="設定 Google 雲端試算表以啟用跨裝置主管傳簽連結"
+          style="display:none;">
+          ⚙️ 設定
+        </button>
+        <button type="button" class="btn btn-white" id="btnPrintTop">
+          🖨️ 列印 / 匯出 PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== 主要工作區 ==================== -->
+  <main class="workspace-container">
+
+    <!-- 填表提示與列印聯數選擇 (列印時隱藏) -->
+    <div class="info-banner no-print">
+      <div class="info-banner-text">
+        💡 <strong>填表與傳簽流程：</strong>① 事故人員填妥後點選「<strong>儲存並複製傳簽連結</strong>」傳給主管 ➔ ② 四級主管點選同一連結填寫意見並儲存 ➔ ③
+        全部主管填畢後，由事故人員開啟連結列印紙本並請主管於「簽章」欄蓋章。
+      </div>
+      <div class="print-mode-selector">
+        <span>🖨️ 列印輸出模式：</span>
+        <select id="printCopyMode">
+          <option value="triplicate">一式三聯（自動產生三頁：醫院藥劑科 / 救護科 / 分隊留存）</option>
+          <option value="single">單頁列印（僅列印乙份 A4）</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 線上傳簽進度與專屬連結列 (列印時隱藏) -->
+    <div class="workflow-share-card no-print">
+      <div class="workflow-steps-row">
+        <span class="workflow-label">📌 線上填寫進度：</span>
+        <span class="step-chip" id="stepChipReporter">① 事故人員填報</span>
+        <span class="step-chip" id="stepChipChief">② 分隊長意見</span>
+        <span class="step-chip" id="stepChipDoctor">③ 醫療指導醫師</span>
+        <span class="step-chip" id="stepChipEms">④ 緊急救護科主管</span>
+        <span class="step-chip" id="stepChipPharmacy">⑤ 醫院藥劑科主任</span>
+        <button type="button" class="btn-mini btn-sync-cloud" id="btnSyncCloudProgress" title="重新整理並載入各級主管最新傳簽意見">🔄
+          重新整理進度</button>
+      </div>
+      <div class="share-link-row">
+        <input type="text" id="shareLinkDisplay" class="input-text share-url-input" readonly
+          placeholder="儲存至雲端後將自動產生專屬傳簽連結（?id=單號）..." />
+        <button type="button" class="btn btn-primary" id="btnSaveAndCopyLink">
+          🔗 複製傳簽連結
+        </button>
+      </div>
+    </div>
+
+    <!-- 驗證警告訊息區 -->
+    <div class="validation-banner no-print" id="validationBanner"></div>
+
+    <!-- ==================== A4 表單本體 ==================== -->
+    <section class="paper-sheet" id="mainFormSheet">
+      <form id="incidentForm" novalidate>
+
+        <!-- 表單標題與一式三聯標記 -->
+        <div class="doc-header">
+          <div class="doc-title">
+            <span>新竹縣政府消防局管制藥品</span>
+            <span class="title-type-group screen-only-input">
+              <label class="title-check-label">
+                <input type="checkbox" name="incidentType" id="typeDamage" value="損毀" />
+                <span>損毀</span>
+              </label>
+              <label class="title-check-label">
+                <input type="checkbox" name="incidentType" id="typeLost" value="遺失" />
+                <span>遺失</span>
+              </label>
+            </span>
+            <span class="print-only-text" id="printTitleIncidentType">□損毀 □遺失</span>
+            <span>事故報告單</span>
+          </div>
+
+          <div class="doc-triplicate-line">
+            <span class="triplicate-badge-print" id="currentCopyBadge">第一聯：醫院藥劑科留存</span>
+            <span>一式三聯：第一聯:醫院藥劑科留存　第二聯:消防局緊急救護科留存　第三聯:分隊自存</span>
+          </div>
+        </div>
+
+        <!-- ==================== 主表格 (與原 PDF 欄位 1:1 對應) ==================== -->
+        <table class="form-table">
+          <colgroup>
+            <col style="width: 16.5%;" />
+            <col style="width: 20%;" />
+            <col style="width: 14%;" />
+            <col style="width: 16.5%;" />
+            <col style="width: 14%;" />
+            <col style="width: 20%;" />
+          </colgroup>
+          <tbody>
+
+            <!-- 第 1 列：案件編號 / 流水號 -->
+            <tr>
+              <th class="field-label">救護紀錄表號</th>
+              <td colspan="2">
+                <div class="screen-only-input" style="display:flex; flex-direction:column; gap:5px;">
+                  <input type="text" id="caseNumber" name="caseNumber" class="input-text" placeholder="請輸入救護紀錄表編號" />
+                  <label class="check-label">
+                    <input type="checkbox" id="noCaseNumber" name="noCaseNumber" />
+                    <span>無案件編號（請於報告內容說明原因）</span>
+                  </label>
+                </div>
+                <span class="print-only-text" id="print_caseNumber">□無案件編號</span>
+              </td>
+              <th class="field-label spaced-label">事故單流水號</th>
+              <td colspan="2">
+                <div class="serial-box screen-only-input">
+                  <input type="text" id="serialNumber" name="serialNumber" class="input-text serial-input" readonly
+                    title="系統自動產生流水號" />
+                  <button type="button" class="btn-mini" id="btnRegenSerial" title="重新產生流水號">重編</button>
+                </div>
+                <span class="print-only-text" id="print_serialNumber">(系統自動產生流水號)</span>
+              </td>
+            </tr>
+
+            <!-- 第 2 列：單位 / 填表日期 -->
+            <tr>
+              <th class="field-label spaced-label">單位</th>
+              <td colspan="2">
+                <div class="screen-only-input">
+                  <input type="text" id="unit" name="unit" class="input-text" list="squadList" placeholder="例如：竹北分隊"
+                    required />
+                  <datalist id="squadList">
+                    <option value="竹北分隊"></option>
+                    <option value="光明分隊"></option>
+                    <option value="高鐵分隊"></option>
+                    <option value="豐田分隊"></option>
+                    <option value="山崎分隊"></option>
+                    <option value="新豐分隊"></option>
+                    <option value="竹東分隊"></option>
+                    <option value="橫山分隊"></option>
+                    <option value="尖石分隊"></option>
+                    <option value="田埔分隊"></option>
+                    <option value="五峰分隊"></option>
+                    <option value="花園小隊"></option>
+                    <option value="新埔分隊"></option>
+                    <option value="關西分隊"></option>
+                    <option value="新工分隊"></option>
+                    <option value="湖口分隊"></option>
+                    <option value="芎林分隊"></option>
+                    <option value="二重分隊"></option>
+                    <option value="寶山分隊"></option>
+                    <option value="北埔分隊"></option>
+                    <option value="峨眉分隊"></option>
+                  </datalist>
+                </div>
+                <span class="print-only-text" id="print_unit">○○分隊</span>
+              </td>
+              <th class="field-label">填表日期</th>
+              <td colspan="2">
+                <div class="screen-only-input">
+                  <input type="date" id="reportDate" name="reportDate" class="input-date" required />
+                </div>
+                <span class="print-only-text" id="print_reportDate">　　年　月　日</span>
+              </td>
+            </tr>
+
+            <!-- 第 3 列：發生時間 / 發生地點 -->
+            <tr>
+              <th class="field-label">發生時間</th>
+              <td colspan="2">
+                <div class="screen-only-input datetime-group">
+                  <input type="date" id="occurDate" name="occurDate" class="input-date datetime-date" required />
+                  <input type="time" id="occurTime" name="occurTime" class="input-date datetime-time" required />
+                </div>
+                <span class="print-only-text" id="print_occurDateTime">　　年　月　日　時　分</span>
+              </td>
+              <th class="field-label">發生地點</th>
+              <td colspan="2">
+                <div class="screen-only-input">
+                  <div class="check-group">
+                    <label class="check-label">
+                      <input type="checkbox" name="occurPlace" value="救護現場" />
+                      <span>救護現場</span>
+                    </label>
+                    <label class="check-label">
+                      <input type="checkbox" name="occurPlace" value="救護車上" />
+                      <span>救護車上</span>
+                    </label>
+                    <label class="check-label">
+                      <input type="checkbox" name="occurPlace" value="分隊" />
+                      <span>分隊</span>
+                    </label>
+                    <label class="check-label">
+                      <input type="checkbox" name="occurPlace" id="occurPlaceOtherChk" value="其他" />
+                      <span>其他：</span>
+                    </label>
+                  </div>
+                  <input type="text" id="occurPlaceOtherText" name="occurPlaceOtherText" class="input-text"
+                    placeholder="請註明其他發生地點" style="margin-top:5px; display:none;" />
+                </div>
+                <span class="print-only-text" id="print_occurPlace">
+                  □救護現場 □救護車上<br />□分隊 □其他：
+                </span>
+              </td>
+            </tr>
+
+            <!-- 第 4a 列：藥品名稱(中文) / 管制級別 -->
+            <tr>
+              <th class="field-label" rowspan="2">藥品名稱</th>
+              <td colspan="2">
+                <div class="drug-subrow screen-only-input">
+                  <span class="drug-subrow-label">中文</span>
+                  <select id="drugNameZh" name="drugNameZh" class="input-select" required>
+                    <option value="">-- 請選擇中文藥名 --</option>
+                    <option value="納布芬注射液 (芯奔)">納布芬注射液 (芯奔)</option>
+                    <option value="咪達唑侖注射液 (導眠靜)">咪達唑侖注射液 (導眠靜)</option>
+                    <option value="嗎啡注射液">嗎啡注射液</option>
+                    <option value="愷他命注射液 (克太拉)">愷他命注射液 (克太拉)</option>
+                  </select>
+                </div>
+                <span class="print-only-text" id="print_drugNameZh">中文：</span>
+              </td>
+              <th class="field-label">管制級別</th>
+              <td colspan="2">
+                <div class="screen-only-input">
+                  <input type="text" id="controlLevel" name="controlLevel" class="input-text input-locked" readonly
+                    placeholder="選擇藥品後自動帶入" title="管制級別隨藥品品項自動綁定" required />
+                  <span class="field-hint-locked">🔒 依藥品自動綁定</span>
+                </div>
+                <span class="print-only-text" id="print_controlLevel">□一級 □二級 □三級 □四級 □非管制藥</span>
+              </td>
+            </tr>
+
+            <!-- 第 4b 列：藥品名稱(英文) / 數量／單位 -->
+            <tr>
+              <td colspan="2">
+                <div class="drug-subrow screen-only-input">
+                  <span class="drug-subrow-label">英文</span>
+                  <select id="drugNameEn" name="drugNameEn" class="input-select">
+                    <option value="">-- 請選擇英文藥名 --</option>
+                    <option value="Nalbuphine (Bain Injection)">Nalbuphine (Bain Injection)</option>
+                    <option value="Midazolam Injection (Dormicum)">Midazolam Injection (Dormicum)</option>
+                    <option value="Morphine HCl Injection">Morphine HCl Injection</option>
+                    <option value="Ketamine Injection">Ketamine Injection</option>
+                  </select>
+                </div>
+                <span class="print-only-text" id="print_drugNameEn">英文：</span>
+              </td>
+              <th class="field-label">數量／單位</th>
+              <td colspan="2">
+                <div class="qty-unit-group screen-only-input">
+                  <div class="qty-unit-item">
+                    <span>數量</span>
+                    <input type="number" id="drugQty" name="drugQty" class="input-number" min="1" step="any"
+                      placeholder="1" required />
+                  </div>
+                  <div class="qty-unit-item">
+                    <span>單位</span>
+                    <input type="text" id="drugUnit" name="drugUnit" class="input-text" list="unitList"
+                      placeholder="支(Amp)" required />
+                    <datalist id="unitList">
+                      <option value="支(Amp)"></option>
+                      <option value="瓶(Vial)"></option>
+                      <option value="顆"></option>
+                      <option value="盒"></option>
+                    </datalist>
+                  </div>
+                </div>
+                <span class="print-only-text" id="print_qtyUnit">數量：　單位：</span>
+              </td>
+            </tr>
+
+            <!-- 第 5 列：規格 / 批號 / 效期 -->
+            <tr>
+              <th class="field-label spaced-label">規格</th>
+              <td>
+                <div class="screen-only-input">
+                  <input type="text" id="drugSpec" name="drugSpec" class="input-text input-locked" readonly
+                    placeholder="選擇藥品後自動帶入" title="規格隨藥品品項自動綁定" />
+                  <span class="field-hint-locked">🔒 依藥品自動綁定</span>
+                </div>
+                <span class="print-only-text" id="print_drugSpec"></span>
+              </td>
+              <th class="field-label spaced-label">批號</th>
+              <td>
+                <div class="screen-only-input">
+                  <input type="text" id="batchNumber" name="batchNumber" class="input-text" placeholder="請輸入藥品批號"
+                    required />
+                </div>
+                <span class="print-only-text" id="print_batchNumber"></span>
+              </td>
+              <th class="field-label spaced-label">效期</th>
+              <td>
+                <div class="screen-only-input">
+                  <input type="date" id="expiryDate" name="expiryDate" class="input-date" />
+                </div>
+                <span class="print-only-text" id="print_expiryDate"></span>
+              </td>
+            </tr>
+
+            <!-- 第 6 列：保管人 / 報告者 / 聯絡電話 -->
+            <tr>
+              <th class="field-label">藥品保管人</th>
+              <td>
+                <div class="screen-only-input">
+                  <input type="text" id="custodian" name="custodian" class="input-text" placeholder="保管人姓名" required />
+                </div>
+                <span class="print-only-text" id="print_custodian"></span>
+              </td>
+              <th class="field-label">事故人員</th>
+              <td>
+                <div class="screen-only-input">
+                  <input type="text" id="reporter" name="reporter" class="input-text" placeholder="報告者姓名" required />
+                </div>
+                <span class="print-only-text" id="print_reporter"></span>
+              </td>
+              <th class="field-label">聯絡電話</th>
+              <td>
+                <div class="screen-only-input">
+                  <input type="tel" id="contactPhone" name="contactPhone" class="input-text" placeholder="分隊電話或手機"
+                    required />
+                </div>
+                <span class="print-only-text" id="print_contactPhone"></span>
+              </td>
+            </tr>
+
+            <!-- 第 7 列：報告內容 -->
+            <tr>
+              <td colspan="6" class="report-content-cell">
+                <div class="report-content-title">
+                  <span>報告內容（請敘明人、事、時、地、物及處置經過）：</span>
+                  <div class="template-chips no-print">
+                    <button type="button" class="btn-mini" id="btnTplDamage">套用「藥品破損」範本</button>
+                    <button type="button" class="btn-mini" id="btnTplLost">套用「藥品遺失」範本</button>
+                  </div>
+                </div>
+                <div class="screen-only-input">
+                  <textarea id="reportContent" name="reportContent" class="input-textarea" rows="4"
+                    placeholder="請詳述發生時間、地點、出勤人員、事發經過（如安瓿碰撞破裂或清點發現短少）、現場殘品保留拍照及立即通報分隊長與醫院藥劑科之處置情形..."
+                    required></textarea>
+                </div>
+                <div class="print-only-text print-narrative-box" id="print_reportContent"></div>
+              </td>
+            </tr>
+
+            <!-- 第 8 列：照片上傳區標題 -->
+            <tr>
+              <th colspan="6" class="section-banner">
+                照片上傳區（破損藥品／安瓿、外盒、批號標籤等）
+              </th>
+            </tr>
+
+            <!-- 第 8b 列：照片一 & 照片二 -->
+            <tr class="photo-grid-row">
+              <td colspan="6">
+                <div class="photo-grid">
+                  <!-- 照片一 -->
+                  <div class="photo-slot">
+                    <div class="photo-dropzone" id="dropzone1" tabindex="0">
+                      <div class="photo-placeholder">
+                        <div class="photo-upload-icon">📷</div>
+                        <div class="photo-slot-title">照片一</div>
+                        <div class="photo-hint">點擊或拖曳上傳照片（破損藥品／安瓿全貌）</div>
+                      </div>
+                      <img id="previewImg1" class="photo-preview-img" alt="照片一預覽" />
+                      <button type="button" class="photo-remove-btn" id="btnRemovePhoto1" title="移除照片一">✕</button>
+                    </div>
+                    <input type="file" id="photoInput1" accept="image/*" style="display:none;" />
+                  </div>
+
+                  <!-- 照片二 -->
+                  <div class="photo-slot">
+                    <div class="photo-dropzone" id="dropzone2" tabindex="0">
+                      <div class="photo-placeholder">
+                        <div class="photo-upload-icon">📷</div>
+                        <div class="photo-slot-title">照片二</div>
+                        <div class="photo-hint">點擊或拖曳上傳照片（外盒、批號與效期標籤）</div>
+                      </div>
+                      <img id="previewImg2" class="photo-preview-img" alt="照片二預覽" />
+                      <button type="button" class="photo-remove-btn" id="btnRemovePhoto2" title="移除照片二">✕</button>
+                    </div>
+                    <input type="file" id="photoInput2" accept="image/*" style="display:none;" />
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- 第 9 列：遺失／失竊報案證明 -->
+            <tr>
+              <td colspan="6">
+                <div class="police-report-line screen-only-input">
+                  <strong>遺失／失竊報案證明：</strong>
+                  <label class="check-label">
+                    <input type="checkbox" name="policeStatus" id="policeNA" value="不適用" />
+                    <span>不適用(損毀)</span>
+                  </label>
+                  <label class="check-label">
+                    <input type="checkbox" name="policeStatus" id="policeReported" value="已報案" />
+                    <span>已報案：</span>
+                  </label>
+                  <div class="police-detail-group" id="policeDetailFields">
+                    <div class="police-field-item">
+                      <span>受理單位</span>
+                      <input type="text" id="policeUnit" name="policeUnit" class="input-text" list="commonPoliceUnits"
+                        placeholder="○○分局○○派出所" />
+                      <datalist id="commonPoliceUnits"></datalist>
+                    </div>
+                    <div class="police-field-item">
+                      <span>日期</span>
+                      <input type="date" id="policeDate" name="policeDate" class="input-date" />
+                    </div>
+                    <div class="police-field-item">
+                      <span>文號</span>
+                      <input type="text" id="policeDocNo" name="policeDocNo" class="input-text"
+                        placeholder="報案三聯單/證明單號" />
+                    </div>
+                  </div>
+                </div>
+                <span class="print-only-text" id="print_policeReport">
+                  遺失／失竊報案證明：□不適用(損毀)　□已報案：受理單位　　　　　　日期　　年　月　日　文號
+                </span>
+              </td>
+            </tr>
+
+            <!-- 第 10 列：改善方案 -->
+            <tr>
+              <td colspan="6">
+                <div style="font-family: var(--font-doc); font-weight:700; font-size:15.5px;">改善方案：</div>
+                <div class="improvement-list screen-only-input">
+                  <div class="improvement-item">
+                    <span class="improvement-num">1.</span>
+                    <input type="text" id="improve1" name="improve1" class="input-text" placeholder="請輸入第一項改善及預防措施" />
+                  </div>
+                  <div class="improvement-item">
+                    <span class="improvement-num">2.</span>
+                    <input type="text" id="improve2" name="improve2" class="input-text" placeholder="請輸入第二項改善及預防措施" />
+                  </div>
+                  <div class="improvement-item">
+                    <span class="improvement-num">3.</span>
+                    <input type="text" id="improve3" name="improve3" class="input-text" placeholder="請輸入第三項改善及預防措施" />
+                  </div>
+                </div>
+                <div class="print-only-text" id="print_improvements">
+                  <div>1. </div>
+                  <div>2. </div>
+                  <div>3. </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ==================== 第 11~14 列：四級主管意見（意見與日期電子化填寫，簽章欄維持列印紙本後蓋章） ==================== -->
+
+            <!-- 11. 分隊長 主管意見 -->
+            <tr class="supervisor-row">
+              <th class="field-label">
+                分隊長<br class="desktop-br" />主管意見
+              </th>
+              <td colspan="5" class="supervisor-cell">
+                <!-- 螢幕電子填寫區 -->
+                <div class="screen-only-input supervisor-input-stack">
+                  <div class="supervisor-duty-row">
+                    <div class="check-group">
+                      <strong>責任判定：</strong>
+                      <label class="check-label">
+                        <input type="checkbox" name="chiefDutyType" value="故意" />
+                        <span>故意</span>
+                      </label>
+                      <label class="check-label">
+                        <input type="checkbox" name="chiefDutyType" value="過失" />
+                        <span>過失</span>
+                      </label>
+                      <label class="check-label">
+                        <input type="checkbox" name="chiefDutyType" id="chiefDutyOtherChk" value="其他" />
+                        <span>其他：</span>
+                      </label>
+                      <input type="text" id="chiefDutyOther" name="chiefDutyOther" class="input-text"
+                        style="width:150px; max-width:100%;" placeholder="請說明其他情形" />
+                    </div>
+                    <div class="check-group">
+                      <label class="check-label">
+                        <input type="checkbox" name="chiefDutyCert" value="能確定責任" />
+                        <span>能確定責任</span>
+                      </label>
+                      <label class="check-label">
+                        <input type="checkbox" name="chiefDutyCert" value="無法確定責任" />
+                        <span>無法確定責任</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="supervisor-opinion-field">
+                    <span class="supervisor-sublabel">意見：</span>
+                    <textarea id="chiefOpinion" name="chiefOpinion" class="input-textarea supervisor-textarea" rows="2"
+                      placeholder="請分隊長填寫主管意見..."></textarea>
+                  </div>
+
+                  <div class="supervisor-sign-date-bar">
+                    <span class="stamp-notice">簽章：<span class="stamp-hint">（列印紙本後蓋章）</span></span>
+                    <div class="supervisor-date-input">
+                      <span>日期：</span>
+                      <input type="date" id="chiefDate" name="chiefDate" class="input-date" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 列印 A4 檢視區 -->
+                <div class="print-only-text">
+                  <div class="paper-box-line">
+                    <span id="print_chiefDutyLeft">責任判定：□故意　□過失　□其他：＿＿＿＿＿＿</span>
+                    <span class="paper-duty-right" id="print_chiefDutyRight">□能確定責任　□無法確定責任</span>
+                  </div>
+                  <div class="paper-opinion-space" id="print_chiefOpinion">意見：</div>
+                  <div class="paper-sign-footer">
+                    <span class="paper-sign-slot">簽章：</span>
+                    <span class="paper-date-slot" id="print_chiefDate">日期：<span class="date-blank"></span>年<span
+                        class="date-blank"></span>月<span class="date-blank"></span>日</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- 12. 醫療指導 醫師意見 -->
+            <tr class="supervisor-row">
+              <th class="field-label">
+                醫療指導<br class="desktop-br" />醫師意見
+              </th>
+              <td colspan="5" class="supervisor-cell">
+                <!-- 螢幕電子填寫區 -->
+                <div class="screen-only-input supervisor-input-stack">
+                  <div class="supervisor-opinion-field">
+                    <span class="supervisor-sublabel">意見：</span>
+                    <textarea id="doctorOpinion" name="doctorOpinion" class="input-textarea supervisor-textarea"
+                      rows="2" placeholder="請醫療指導醫師填寫意見..."></textarea>
+                  </div>
+                  <div class="supervisor-sign-date-bar">
+                    <span class="stamp-notice">簽章：<span class="stamp-hint">（列印紙本後蓋章）</span></span>
+                    <div class="supervisor-date-input">
+                      <span>日期：</span>
+                      <input type="date" id="doctorDate" name="doctorDate" class="input-date" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 列印 A4 檢視區 -->
+                <div class="print-only-text">
+                  <div class="paper-opinion-space" id="print_doctorOpinion">意見：</div>
+                  <div class="paper-sign-footer">
+                    <span class="paper-sign-slot">簽章：</span>
+                    <span class="paper-date-slot" id="print_doctorDate">日期：<span class="date-blank"></span>年<span
+                        class="date-blank"></span>月<span class="date-blank"></span>日</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- 13. 緊急救護科 主管意見 -->
+            <tr class="supervisor-row">
+              <th class="field-label">
+                緊急救護科<br class="desktop-br" />主管意見
+              </th>
+              <td colspan="5" class="supervisor-cell">
+                <!-- 螢幕電子填寫區 -->
+                <div class="screen-only-input supervisor-input-stack">
+                  <div class="supervisor-opinion-field">
+                    <span class="supervisor-sublabel">意見：</span>
+                    <textarea id="emsOpinion" name="emsOpinion" class="input-textarea supervisor-textarea" rows="2"
+                      placeholder="請緊急救護科主管填寫意見..."></textarea>
+                  </div>
+                  <div class="supervisor-sign-date-bar">
+                    <span class="stamp-notice">簽章：<span class="stamp-hint">（列印紙本後蓋章）</span></span>
+                    <div class="supervisor-date-input">
+                      <span>日期：</span>
+                      <input type="date" id="emsDate" name="emsDate" class="input-date" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 列印 A4 檢視區 -->
+                <div class="print-only-text">
+                  <div class="paper-opinion-space" id="print_emsOpinion">意見：</div>
+                  <div class="paper-sign-footer">
+                    <span class="paper-sign-slot">簽章：</span>
+                    <span class="paper-date-slot" id="print_emsDate">日期：<span class="date-blank"></span>年<span
+                        class="date-blank"></span>月<span class="date-blank"></span>日</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- 14. 醫院 藥劑科主任 意見 -->
+            <tr class="supervisor-row">
+              <th class="field-label">
+                醫院<br class="desktop-br" />藥劑科主任<br class="desktop-br" />意見
+              </th>
+              <td colspan="5" class="supervisor-cell">
+                <!-- 螢幕電子填寫區 -->
+                <div class="screen-only-input supervisor-input-stack">
+                  <div class="supervisor-inline-field">
+                    <span class="supervisor-sublabel">處理方式：</span>
+                    <input type="text" id="pharmacyAction" name="pharmacyAction" class="input-text"
+                      placeholder="請填寫處理方式..." />
+                  </div>
+                  <div class="supervisor-inline-field">
+                    <span class="supervisor-sublabel">其他建議：</span>
+                    <input type="text" id="pharmacyAdvice" name="pharmacyAdvice" class="input-text"
+                      placeholder="請填寫其他建議..." />
+                  </div>
+                  <div class="supervisor-sign-date-bar">
+                    <span class="stamp-notice">簽章：<span class="stamp-hint">（列印紙本後蓋章）</span></span>
+                    <div class="supervisor-date-input">
+                      <span>日期：</span>
+                      <input type="date" id="pharmacyDate" name="pharmacyDate" class="input-date" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 列印 A4 檢視區 -->
+                <div class="print-only-text">
+                  <div class="paper-opinion-space compact" id="print_pharmacyAction">處理方式：</div>
+                  <div class="paper-opinion-space compact" id="print_pharmacyAdvice">其他建議：</div>
+                  <div class="paper-sign-footer">
+                    <span class="paper-sign-slot">簽章：</span>
+                    <span class="paper-date-slot" id="print_pharmacyDate">日期：<span class="date-blank"></span>年<span
+                        class="date-blank"></span>月<span class="date-blank"></span>日</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ==================== 第 15 列：檢附文件（固定紙本手寫勾選欄位，不設電子輸入） ==================== -->
+            <tr>
+              <th colspan="6" class="section-banner" style="position:relative;">
+                <span>檢附文件（依食藥署「管制藥品減損申報文件查檢表」）</span>
+                <span class="handwriting-badge">✍️ 紙本確認欄位（列印後請手寫勾選）</span>
+              </th>
+            </tr>
+            <tr>
+              <td colspan="6" style="padding:0; background-color: var(--bg-handwriting);">
+                <div class="attachments-grid">
+                  <!-- 左欄：【分隊檢附】 -->
+                  <div class="attach-col">
+                    <div class="attach-col-title">【分隊檢附】</div>
+                    <div class="squad-attach-columns">
+                      <!-- 左子欄 -->
+                      <div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>事故報告單</span>
+                        </div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>減損前後收支結存簿冊影本</span>
+                        </div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>止痛與鎮靜藥品使用紀錄單影本<span class="attach-subnote">（姓名欄填「破損」）</span></span>
+                        </div>
+                      </div>
+                      <!-- 右子欄 -->
+                      <div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>現場及破損藥品照片（全彩影印）</span>
+                        </div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>殘餘藥品、破損安瓿及外盒</span>
+                        </div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>改善及預防措施</span>
+                        </div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>遺失：警方受(處)理案件證明單（失竊必附）</span>
+                        </div>
+                        <div class="attach-item">
+                          <span class="paper-square"></span>
+                          <span>失竊等刑事：報案書函影本（失竊必附）</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 右欄：【醫院藥劑科辦理】 -->
+                  <div class="attach-col">
+                    <div class="attach-col-title">【醫院藥劑科辦理】</div>
+                    <div>
+                      <div class="attach-item">
+                        <span class="paper-square"></span>
+                        <span>減損說明函（加蓋大小章）</span>
+                      </div>
+                      <div class="attach-item">
+                        <span class="paper-square"></span>
+                        <span>向衛生局申請減損證明</span>
+                      </div>
+                      <div class="attach-item">
+                        <span class="paper-square"></span>
+                        <span>簿冊登載減損證明文號</span>
+                      </div>
+                      <div class="attach-item">
+                        <span class="paper-square"></span>
+                        <span>減損日起七日內向食藥署申報</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+
+        <!-- 表單底部時效與說明 -->
+        <div class="doc-footer-notes">
+          <div class="footer-deadline">
+            時效：事件發生當下即同步通報分隊長及醫院藥劑科（藥劑科立即報請衛生局查核）；分隊（含分隊長意見）24 小時內送出本單；藥劑科須於減損日起 7 日內向食藥署申報。
+          </div>
+          <div class="footer-explanation">
+            說明：「減損（發生）日期」為唯一基準，使用紀錄單、簿冊、盤點表及報案證明單日期須一致。損毀須保留殘品並拍照；遺失、失竊應保留現場並立即向當地警察機關報案。無救護案件編號者請勾選並於報告內容說明。
+          </div>
+        </div>
+
+        <!-- 底部操作按鈕區 (列印時隱藏) -->
+        <div class="bottom-submit-bar no-print">
+          <div class="submit-group-left">
+            <button type="button" class="btn btn-danger-outline" id="btnResetForm">
+              🗑️ 清空重填
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnSaveDraftManual">
+              ⌛ 暫存草稿
+            </button>
+          </div>
+          <div class="submit-group-right">
+            <button type="button" class="btn btn-outline btn-lg" id="btnPrintBottom">
+              🖨️ 預覽列印 / 匯出 A4 PDF
+            </button>
+            <button type="submit" class="btn btn-primary btn-lg" id="btnSubmitCloud">
+              💾 儲存填寫內容
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- 一式三聯列印自動複製容器 (僅在列印一式三聯時展開第 2、3 聯) -->
+    <div id="triplicatePrintCloneContainer"></div>
+
+  </main>
+
+  <!-- ==================== Modal 1: Google Apps Script 雲端傳簽後端設定 ==================== -->
+  <div class="modal-backdrop no-print" id="cloudConfigModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>☁️ Google 試算表 & 雲端硬碟 (GAS) 線上傳簽設定</h3>
+        <button type="button" class="modal-close" data-close-modal="cloudConfigModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="config-group">
+          <label for="gasWebAppUrl">Google Apps Script 網頁應用程式網址 (Web App URL)</label>
+          <input type="url" id="gasWebAppUrl" class="input-text"
+            placeholder="https://script.google.com/macros/s/AKfycb.../exec" />
+          <p style="font-size:12.5px; color:var(--text-muted); margin-top:4px;">
+            設定完成後，產生的傳簽連結會自動帶入此雲端金鑰，主管開啟連結時<strong>完全不需另外設定</strong>即可直接讀取單據與填寫主管意見！
+          </p>
+        </div>
+
+        <div
+          style="background: var(--primary-light); border:1px solid var(--primary-border); border-radius:8px; padding:14px 16px;">
+          <div
+            style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+            <h4 style="color:var(--primary-active);">🚀 3 分鐘快速建立免費 Google 雲端傳簽資料庫：</h4>
+            <a href="https://sheets.new" target="_blank" rel="noopener" class="btn btn-outline"
+              style="padding:4px 10px; font-size:12.5px;">
+              ➕ 點此新建 Google 試算表
+            </a>
+          </div>
+          <ol class="step-list">
+            <li>點擊右上角「<strong>➕ 點此新建 Google 試算表</strong>」（或開啟您現有的 Google
+              試算表），點選上方選單「<strong>擴充功能</strong>」➔「<strong>Apps Script</strong>」。</li>
+            <li>清空編輯器原本的 `function myFunction() {}`，將專案目錄下 <code>gas/Code.gs</code> 的內容貼上，並按 <code>Ctrl + S</code> 儲存。
+            </li>
+            <li>點選右上角藍色按鈕「<strong>部署</strong>」➔「<strong>新增部署作業</strong>」。</li>
+            <li>點選左側齒輪「選取類型」➔ 勾選「<strong>網頁應用程式 (Web App)</strong>」。</li>
+            <li><strong>設定權限（關鍵！）</strong>：
+              <ul style="padding-left:18px; margin-top:2px;">
+                <li>「執行身分」選擇：<strong>我 (Me)</strong></li>
+                <li>「誰可以存取」選擇：<strong>所有人 (Anyone)</strong>（讓各級主管免登入即可透過傳簽連結讀寫單據）</li>
+              </ul>
+            </li>
+            <li>點擊「<strong>部署</strong>」➔「<strong>授予存取權</strong>」➔ 選擇您的 Google 帳號 ➔ 點選左下角「<strong>進階
+                (Advanced)</strong>」➔「<strong>前往未命名專案 (不安全)</strong>」➔「<strong>允許</strong>」。</li>
+            <li>複製畫面產生的「<strong>網頁應用程式網址 (`https://script.google.com/macros/s/.../exec`)</strong>」，貼到上方輸入框並按「✅ 儲存設定」即可！
+            </li>
+          </ol>
+        </div>
+
+        <div
+          style="background: #EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px 14px; margin-top:12px;">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px;">
+            <div>
+              <strong style="color:#1D4ED8; font-size:13px;">💊 藥品品項線上維護：</strong>
+              <div style="font-size:12px; color:#1E40AF; margin-top:2px;">
+                系統已於 Google 試算表自動建立「<strong>藥品品項清單</strong>」分頁，可隨時線上維護品項、規格與管制級別。
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline" id="btnSyncDrugCatalogNow"
+              style="padding:4px 10px; font-size:12px;">
+              🔄 立即同步藥品清單
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnTestCloudConn">🔌 測試連線</button>
+        <button type="button" class="btn btn-primary" id="btnSaveCloudConfig">✅ 儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Modal 2: 歷史與傳簽紀錄查詢 ==================== -->
+  <div class="modal-backdrop no-print" id="historyModal">
+    <div class="modal-card" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3>📂 事故報告單歷史與雲端傳簽紀錄</h3>
+        <button type="button" class="modal-close" data-close-modal="historyModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div
+          style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px;">
+          <span style="font-size:13px; color:var(--text-secondary);">點擊「載入表單」可檢視最新簽核進度、補充填寫主管意見或列印 A4 三聯單。</span>
+          <button type="button" class="btn btn-outline" id="btnFetchCloudRecords"
+            style="padding:5px 12px; font-size:12.5px;">
+            🔄 從 Google 試算表同步最新進度
+          </button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>流水編號</th>
+                <th>填表日期</th>
+                <th>單位</th>
+                <th>類別</th>
+                <th>藥品名稱</th>
+                <th>報告者</th>
+                <th>四級主管傳簽進度</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="8" style="text-align:center; padding:24px; color:var(--text-muted);">尚無歷史紀錄</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close-modal="historyModal">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 通知容器 -->
+  <div class="toast-container no-print" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
