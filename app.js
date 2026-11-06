@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 方案 C：頁面載入時背景靜默向 Google 試算表同步最新藥品清單
   fetchDrugCatalogFromCloud(true);
 
-  // 檢查網址是否帶有傳簽單號 (?id=HCFD-...)
+  // 檢查網址是否帶有傳簽單號 (?id=HCFB-...)
   const hasSharedId = await checkAndLoadSharedReportFromUrl();
   if (!hasSharedId) {
     loadDraftFromStorage();
@@ -459,7 +459,7 @@ function generateSerialNumber(increment = false) {
   }
 
   const seqStr = String(seqObj.count).padStart(3, '0');
-  return `HCFD-${dateKey}-${seqStr}`;
+  return `HCFB-${dateKey}-${seqStr}`;
 }
 
 function initDefaultDatesAndSerial() {
