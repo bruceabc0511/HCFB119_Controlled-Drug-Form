@@ -732,7 +732,7 @@ function updateWorkflowProgressUI() {
   const isPharmacyDone = Boolean(data.pharmacyAction.trim() || data.pharmacyAdvice.trim());
 
   setStepChipState('stepChipReporter', '① 事故人員填報', isReporterDone);
-  setStepChipState('stepChipChief', '② 分隊長意見', isChiefDone);
+  setStepChipState('stepChipChief', '② 分隊長', isChiefDone);
   setStepChipState('stepChipDoctor', '③ 醫療指導醫師', isDoctorDone);
   setStepChipState('stepChipEms', '④ 緊急救護科主管', isEmsDone);
   setStepChipState('stepChipPharmacy', '⑤ 醫院藥劑科主任', isPharmacyDone);
