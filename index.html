@@ -758,24 +758,20 @@
           </div>
         </div>
 
-        <!-- 底部操作按鈕區 (列印時隱藏) -->
-        <div class="bottom-submit-bar no-print">
-          <div class="submit-group-left">
-            <button type="button" class="btn btn-danger-outline" id="btnResetForm">
-              🗑️ 清空重填
-            </button>
-            <button type="button" class="btn btn-secondary" id="btnSaveDraftManual">
-              ⌛ 暫存草稿
-            </button>
-          </div>
-          <div class="submit-group-right">
-            <button type="button" class="btn btn-outline btn-lg" id="btnPrintBottom">
-              🖨️ 預覽列印 / 匯出 A4 PDF
-            </button>
-            <button type="submit" class="btn btn-primary btn-lg" id="btnSubmitCloud">
-              💾 儲存填寫內容
-            </button>
-          </div>
+        <!-- 右側浮動式操作按鈕區 (桌機固定右側隨卷軸移動，窄螢幕/手機自動回歸底部並排；列印時隱藏) -->
+        <div class="floating-action-dock no-print" aria-label="表單操作工具列">
+          <button type="submit" class="btn btn-primary btn-lg" id="btnSubmitCloud">
+            💾 儲存填寫內容
+          </button>
+          <button type="button" class="btn btn-outline btn-lg" id="btnPrintBottom">
+            🖨️ 預覽列印 / 匯出PDF
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnSaveDraftManual">
+            ⌛ 暫存草稿
+          </button>
+          <button type="button" class="btn btn-danger-outline" id="btnResetForm">
+            🗑️ 清空重填
+          </button>
         </div>
 
       </form>
