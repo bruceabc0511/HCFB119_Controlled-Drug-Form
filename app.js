@@ -1057,6 +1057,14 @@ function triggerPrintA4() {
     cloneContainer.classList.remove('active-triplicate');
   }
 
+  // 列印完畢後立即清空複製節點，防止 DOM 殘留導致後續表單取值讀取到重複核取方塊
+  const cleanupTriplicateClones = () => {
+    cloneContainer.innerHTML = '';
+    cloneContainer.classList.remove('active-triplicate');
+    window.removeEventListener('afterprint', cleanupTriplicateClones);
+  };
+  window.addEventListener('afterprint', cleanupTriplicateClones);
+
   setTimeout(() => {
     window.print();
   }, 120);
@@ -1203,14 +1211,14 @@ function populateFormData(data) {
   if (data.photo1) {
     photoState.photo1 = data.photo1;
     restorePhotoPreview(1, photoState.photo1);
-  } else if (data.photo1 === '' && data.photo1Cleared) {
+  } else {
     photoState.photo1 = '';
     restorePhotoPreview(1, '');
   }
   if (data.photo2) {
     photoState.photo2 = data.photo2;
     restorePhotoPreview(2, photoState.photo2);
-  } else if (data.photo2 === '' && data.photo2Cleared) {
+  } else {
     photoState.photo2 = '';
     restorePhotoPreview(2, '');
   }
@@ -1336,7 +1344,16 @@ async function handleFormSubmitAndCopyLink() {
   banner.classList.remove('show');
   const dirtyFields = getDirtyFields(data);
   data.signProgress = computeLocalProgressSummary(data);
-  saveRecordToLocalHistory(data);
+
+  // 判斷是否為全新建立的單據（網址列或基準快照無既有單號）
+  const urlParams = new URLSearchParams(window.location.search);
+  const isNewCreation = !urlParams.get('id') && (!baselineFormDataSnapshot || !baselineFormDataSnapshot.serialNumber);
+
+  try {
+    saveRecordToLocalHistory(data);
+  } catch (histErr) {
+    console.warn('Save local history before submit warning:', histErr);
+  }
 
   const gasUrl = getActiveGasUrl();
   if (!gasUrl) {
@@ -1361,7 +1378,8 @@ async function handleFormSubmitAndCopyLink() {
       body: JSON.stringify({
         action: 'submitReport',
         payload: data,
-        dirtyFields: dirtyFields
+        dirtyFields: dirtyFields,
+        isNew: isNewCreation
       })
     });
 
@@ -1372,14 +1390,26 @@ async function handleFormSubmitAndCopyLink() {
         data.serialNumber = result.serialNumber;
       }
       if (result.record) {
-        populateFormData(result.record);
-        setBaselineSnapshot(result.record);
+        // 同步還原畫面上照片狀態（若雲端有照片 Drive URL 且本地有現成 Base64，保留本地 Base64 供立即預覽）
+        const updatedRecord = Object.assign({}, result.record);
+        if (!updatedRecord.photo1 && photoState.photo1) updatedRecord.photo1 = photoState.photo1;
+        if (!updatedRecord.photo2 && photoState.photo2) updatedRecord.photo2 = photoState.photo2;
+
+        populateFormData(updatedRecord);
+        // 設定基準快照（照片與表單內容已同步）
+        setBaselineSnapshot(updatedRecord);
         saveRecordToLocalHistory(result.record);
       } else {
         data.signProgress = result.signProgress || computeLocalProgressSummary(data);
         saveRecordToLocalHistory(data);
         setBaselineSnapshot(data);
       }
+
+      // 儲存成功後清除未儲存草稿，避免日後誤載入舊單據草稿
+      localStorage.removeItem(STORAGE_KEYS.DRAFT);
+      const nowStr = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+      document.getElementById('autoSaveTimestamp').textContent = `已成功同步雲端 (${nowStr})`;
+
       syncPrintView();
       updateWorkflowProgressUI();
 
@@ -1419,19 +1449,30 @@ function getLocalHistoryList() {
 }
 
 function saveRecordToLocalHistory(record) {
+  if (!record || !record.serialNumber) return;
+  // 建立不含龐大 Base64 照片的輕量版物件，確保本機歷史紀錄不突破 5MB 配額
+  const lightRecord = Object.assign({}, record, {
+    photo1: '',
+    photo2: ''
+  });
+
   const list = getLocalHistoryList();
-  const idx = list.findIndex((item) => item.serialNumber === record.serialNumber);
+  const idx = list.findIndex((item) => item.serialNumber === lightRecord.serialNumber);
   if (idx >= 0) {
-    list[idx] = record;
+    list[idx] = lightRecord;
   } else {
-    list.unshift(record);
+    list.unshift(lightRecord);
   }
   const trimmed = list.slice(0, 30);
   try {
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(trimmed));
   } catch (e) {
-    const lightList = trimmed.map((r, i) => (i > 5 ? { ...r, photo1: '', photo2: '' } : r));
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(lightList));
+    try {
+      const ultraLight = trimmed.slice(0, 15);
+      localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(ultraLight));
+    } catch (innerErr) {
+      console.warn('Local history storage quota reached:', innerErr);
+    }
   }
 }
 
@@ -1508,7 +1549,9 @@ async function syncLatestReportFromCloud(isSilent = false) {
   }
 
   try {
-    const res = await fetch(`${gasUrl}?action=getReport&id=${encodeURIComponent(reportId)}`);
+    // 靜默更新傳入 light=1，不請求龐大的 Base64 照片，顯著降低傳輸時間與頻寬消耗
+    const lightQuery = isSilent ? '&light=1' : '';
+    const res = await fetch(`${gasUrl}?action=getReport&id=${encodeURIComponent(reportId)}${lightQuery}`);
     const json = await res.json();
     if (json && json.status === 'success' && json.record) {
       const current = collectFormData();
@@ -1516,6 +1559,11 @@ async function syncLatestReportFromCloud(isSilent = false) {
 
       // 合併雲端最新資料與本地使用者目前正在輸入的欄位 (保護正在打字的欄位不被覆蓋)
       const mergedToDisplay = Object.assign({}, json.record);
+      // 若為輕量請求，保留當前頁面上的照片狀態
+      if (isSilent) {
+        mergedToDisplay.photo1 = photoState.photo1;
+        mergedToDisplay.photo2 = photoState.photo2;
+      }
       for (let i = 0; i < currentDirty.length; i++) {
         const k = currentDirty[i];
         mergedToDisplay[k] = current[k];
@@ -1679,6 +1727,16 @@ function bindToolbarAndModals() {
       showToast('❌ 連線測試失敗：請確認網址為 /exec 結尾且部署權限為「所有人」');
     }
   });
+
+  const btnClearCustom = document.getElementById('btnClearCustomOptions');
+  if (btnClearCustom) {
+    btnClearCustom.addEventListener('click', () => {
+      if (confirm('確定要清除所有手動記憶的自訂分隊、單位與派出所快取嗎？（系統內建預設清單仍會保留）')) {
+        localStorage.removeItem(STORAGE_KEYS.CUSTOM_OPTIONS);
+        showToast('🧹 已重設自訂選單快取！');
+      }
+    });
+  }
 
   const btnSyncDrugs = document.getElementById('btnSyncDrugCatalogNow');
   if (btnSyncDrugs) {
